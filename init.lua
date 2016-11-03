@@ -177,6 +177,19 @@ local function pile_up(s,m,p)
 		minetest.swap_node(p,{name=p1,param2=n<4 and n or n-4})
 	end
 end
+local function slide_off(p,nd) if string.sub(nd.name,1,14) == "erosion:slope_" then
+	p.y = p.y-1
+	local un,o,n = string.sub(minetest.get_node(p).name,1,17)
+	if un == "moreblocks:slope_" then
+		o = get_adjacent_nodes(p,{"air"})
+		if o[1] then local flmt,m = slope_type(nd.name)
+			p.y,n,m = p.y+1,slopes[flmt],m or #nd.name+1
+			flmt = "erosion:fall_"..eroding_nodes[string.sub(nd.name,15,m-1)][2]
+			for i=1,#o>n and n or #o do minetest.place_node(o[1],{name=flmt}) end
+			minetest.set_node(p,{name="air"})
+		end
+	end
+end end
 for k,v in pairs(erosion_materials) do local drt = eroding_nodes[k][2] == "dirt"
 	v.groups.crumbly,v.groups.falling_node,v.groups.not_in_creative_inventory = 3,1,1
 	if not drt or k == "dirt" then
@@ -307,6 +320,24 @@ local function wwthrngCL(p,n) p.y = p.y+1
 	end
 end
 
+minetest.register_lbm({
+	name = "erosion:initial_load_pass",
+	nodenames = nntbl,
+	action = wwthrngCL,
+})
+
+minetest.register_lbm({
+	name = "erosion:slope_dress_pass",
+	nodenames = sntbl,
+	action = function(p,n) local st,i = slope_type(n.name)
+		i = i or #n.name+1
+		local ns,d = string.sub(n.name,1,i-1),slopes[st]
+		i = orient_pile(p)
+		ns = ns..bstbl[i<4 and 1 or 2][d]
+		minetest.swap_node(p,{name=ns,param2=i<4 and i or i-4})
+	end,
+})
+
 minetest.register_abm({
 	nodenames = nntbl,
 	neighbors = {"air"},
@@ -323,4 +354,20 @@ minetest.register_abm({
 	action = wwthrngCL,
 })
 
+minetest.register_abm({
+	nodenames = sntbl,
+	neighbors = {"air"},
+	interval = 5,
+	chance = 1,
+	action = slide_off,
+})
+
+minetest.register_abm({
+	nodenames = lntbl,
+	neighbors = {"air"},
+	interval = 11,
+	chance = 3,
+	action = slide_off,
+})
 minetest.register_on_punchnode(wwthrngCL)
+
