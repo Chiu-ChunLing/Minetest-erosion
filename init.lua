@@ -141,15 +141,16 @@ local function get_adjacent_nodes(p,nlst)
 	end
 	return xsr,nvt
 end
-local function orient_pile(p) local _,t0 = get_adjacent_nodes(p,{"air"})
-	local _,t1 = get_adjacent_nodes(p,snt1)
+local function orient_pile(k,m,p) local _,t0 = get_adjacent_nodes(p,{"air"})
+	local a,t1 = get_adjacent_nodes(p,snt1)
 	local _,t2 = get_adjacent_nodes(p,snt2)
-	local x1,z1,x2,z2 =
+	local x1,z1,x2,z2,d,nm =
 	t0[p.x-1] and t0[p.x-1][p.z] and 0 or t1[p.x-1] and t1[p.x-1][p.z] and 1 or t2[p.x-1] and t2[p.x-1][p.z] and 2 or 3,
 	t0[p.x] and t0[p.x][p.z-1] and 0 or t1[p.x] and t1[p.x][p.z-1] and 1 or t2[p.x] and t2[p.x][p.z-1] and 2 or 3,
 	t0[p.x+1] and t0[p.x+1][p.z] and 0 or t1[p.x+1] and t1[p.x+1][p.z] and 1 or t2[p.x+1] and t2[p.x+1][p.z] and 2 or 3,
 	t0[p.x] and t0[p.x][p.z+1] and 0 or t1[p.x] and t1[p.x][p.z+1] and 1 or t2[p.x] and t2[p.x][p.z+1] and 2 or 3
-	return z2 > z1 and x1 == x2 and 0
+	d = m>3 and 0
+	or z2 > z1 and x1 == x2 and 0
 	or x2 > x1 and z1 == z2 and 1
 	or z1 > z2 and x1 == x2 and 2
 	or x1 > x2 and z1 == z2 and 3
@@ -157,22 +158,25 @@ local function orient_pile(p) local _,t0 = get_adjacent_nodes(p,{"air"})
 	or x2 > x1 and z2 > z1 and 5
 	or z1 > z2 and x2 > x1 and 6
 	or x1 > x2 and z1 > z2 and 7 or 4
+	nm = m<4 and "erosion:slope_"..k..bstbl[d<4 and 1 or 2][m] or "default:"..k
+	minetest.swap_node(p,{name=nm,param2=d<4 and d or d-4})
+	return a
 end
 local function pile_up(k,m,p) p.y = p.y-1
 	local un,p1,n = minetest.get_node(p),"erosion:slope_"
 	if erosion_materials[eroding_lut[un.name]] then erosionCL(p,un) un = minetest.get_node(p) end
 	if un.name == "air" or un.name == "default:water_source" then
 	elseif eroded_lut[un.name] then
-		n = orient_pile(p)
-		p1 = slopes[eroded_lut[un.name][2]] and slopes[eroded_lut[un.name][2]]+m<4
-		and p1..k..bstbl[n<4 and 1 or 2][slopes[eroded_lut[un.name][2]]+m] or "default:"..k
-		minetest.swap_node(p,{name=p1,param2=n<4 and n or n-4})
+		orient_pile(k,m+slopes[eroded_lut[un.name][2]],p)
 		p.y = p.y+1
 		minetest.set_node(p,{name="air"})
 	else p.y = p.y+1
-		n = orient_pile(p)
-		p1 = p1..k..bstbl[n<4 and 1 or 2][m]
-		minetest.swap_node(p,{name=p1,param2=n<4 and n or n-4})
+		a = orient_pile(k,m,p)
+		for i=1,#a do local nn = minetest.get_node(a[i])
+			orient_pile(eroded_lut[nn.name][1],slopes[eroded_lut[nn.name][2]],a[i])
+		end
+--		p1 = p1..k..bstbl[n<4 and 1 or 2][m]
+--		minetest.swap_node(p,{name=p1,param2=n<4 and n or n-4})
 	end
 end
 local function slide_off(p,nd) if eroded_lut[nd.name] then p.y = p.y-1
@@ -253,7 +257,7 @@ for x=-1,1 do cube3[x]={} for y=-1,1 do cube3[x][y]={} end end
 for k,v in pairs(eroding_nodes) do dpstn[k] = minetest.get_content_id("default:"..k)
 	for s,_ in pairs(slopes) do dpstn["slp_"..k..s] = minetest.get_content_id(eroding_nodes[k][1].."slope_"..k..s) end
 end
-dpstn.stone,dpstn.air = minetest.get_content_id("default:stone"),minetest.get_content_id("air")
+dpstn.air = minetest.get_content_id("air")
 local function place_slope(data,prm2,vpos,m)
 	box.w = data[vpos+cube3[-1][0][0]] == dpstn[m]
 	box.e = data[vpos+cube3[1][0][0]] == dpstn[m]
@@ -320,8 +324,7 @@ local function place_slope(data,prm2,vpos,m)
 		end
 	end
 end
-
-minetest.register_on_generated(function(minp, maxp)--function that affects generated mapblockchunks
+minetest.register_on_generated(function(minp, maxp)
 	if minp.y > 256 then return end
 	local vm, emin, emax = minetest.get_mapgen_object("voxelmanip")
 	local data,prm2 = vm:get_data(),vm:get_param2_data()
@@ -357,15 +360,7 @@ minetest.register_lbm({
 	nodenames = nntbl,
 	action = wwthrngCL,
 })
-
-minetest.register_lbm({
-	name = "erosion:slope_dress_pass",
-	nodenames = sntbl,
-	action = function(p,n) local k,d = eroded_lut[n.name][1],orient_pile(p)--]]
---		minetest.swap_node(p,{name=eroding_nodes[k][1].."slope_"..k..bstbl[d<4 and 1 or 2][slopes[eroded_lut[n.name][2]]],param2=d<4 and d or d-4})
---	end,
---})
-
+--]]
 minetest.register_abm({
 	nodenames = nntbl,
 	neighbors = {"air"},
@@ -386,7 +381,7 @@ minetest.register_abm({--causes dirt/sand/gravel to erode even when covered, may
 	nodenames = lntbl,
 	neighbors = {"air"},
 	interval = 43,
-	chance = 8,
+	chance = 9,
 	action = erosionCL,
 })
 --]]
