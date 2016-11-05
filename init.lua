@@ -4,7 +4,7 @@ if not rawget(_G,"stairsplus") then
 	minetest.log("info", "erosion: stairsplus not found")
 	return
 end
-local nntbl,eroding_nodes = {},{--mod defining sloped nodes of this type, materials produced by erosion
+local nntbl,eroding_lut,eroded_lut,eroding_nodes = {},{},{},{--mod defining sloped nodes, materials produced by erosion
 	stone = {"moreblocks:","gravel"},
 	cobble = {"moreblocks:","gravel"},
 	mossycobble = {"moreblocks:","gravel"},
@@ -21,9 +21,9 @@ local nntbl,eroding_nodes = {},{--mod defining sloped nodes of this type, materi
 	gravel = {"erosion:","gravel"},
 	clay = {"erosion:","clay"},
 	snowblock = {"erosion:","snowblock"},
-	ice = {"erosion:","snowblock"},
+	ice = {"moreblocks:","snowblock"},
 }
-for k,v in pairs(eroding_nodes) do nntbl[#nntbl+1] = "default:"..k end
+local gen_nodes = {"stone","desert_stone","sandstone","ice"}
 local lntbl,erosion_materials = {},{--erosion products to define
 	sand = {
 		description = "Sand",
@@ -93,14 +93,14 @@ local lntbl,erosion_materials = {},{--erosion products to define
 			dig = {name = "default_snow_footstep", gain = 0.2}
 		}),
 	},
-	ice = {
+--[[	ice = {
 		description = "Ice",
 		tiles = {"default_ice.png"},
 		is_ground_content = false,
 		paramtype = "light",
 		groups = {cracky = 3, puts_out_fire = 1},
 		sounds = default.node_sound_glass_defaults(),
-	}
+	}--]]
 }
 for k,v in pairs(erosion_materials) do lntbl[#lntbl+1] = "default:"..k end
 local sntbl,snt1,snt2,slopes = {},{},{},{
@@ -121,19 +121,18 @@ local sntbl,snt1,snt2,slopes = {},{},{},{
 	_outer_cut_half_raised = 2,
 	_cut = 2,
 }
-local bstbl = {{"_half","","_half_raised"},{"_outer_cut_half","_cut","_inner_cut_half_raised"}}
-for k,v in pairs(eroding_nodes) do if string.find(k,"cobble") then
-	for s,d in pairs(slopes) do
-		minetest.register_craft({
-			output = v[1].."micro_"..k.." "..slopes[s]*2-1,
-			recipe = {{v[1].."slope_"..k..s}}
-		})
+for k,v in pairs(eroding_nodes) do nntbl[#nntbl+1] = "default:"..k eroding_lut["default:"..k] = k
+	if erosion_materials[k] then for s,d in pairs(slopes) do eroded_lut[v[1].."slope_"..k..s] = {k,s} end end
+	if string.find(k,"cobble") then
+		for s,d in pairs(slopes) do
+			minetest.register_craft({
+				output = v[1].."micro_"..k.." "..slopes[s]*2-1,
+				recipe = {{v[1].."slope_"..k..s}}
+			})
+		end
 	end
-end end
-local function slope_type(s)
-	local n = string.find(s,"_inner") or string.find(s,"_outer") or string.find(s,"_cut") or string.find(s,"_half")
-	return n and string.sub(s,n) or "",n
 end
+local bstbl = {{"_half","","_half_raised"},{"_outer_cut_half","_cut","_inner_cut_half_raised"}}
 local function get_adjacent_nodes(p,nlst)
 	local xsr,nvt = minetest.find_nodes_in_area({x=p.x-1,y=p.y,z=p.z-1},{x=p.x+1,y=p.y,z=p.z+1},nlst),{}
 	for i=1,#xsr do
@@ -142,15 +141,16 @@ local function get_adjacent_nodes(p,nlst)
 	end
 	return xsr,nvt
 end
-local function orient_pile(p) local _,t0 = get_adjacent_nodes(p,{"air"})
-	local _,t1 = get_adjacent_nodes(p,snt1)
+local function orient_pile(k,m,p) local _,t0 = get_adjacent_nodes(p,{"air"})
+	local a,t1 = get_adjacent_nodes(p,snt1)
 	local _,t2 = get_adjacent_nodes(p,snt2)
-	local x1,z1,x2,z2 =
+	local x1,z1,x2,z2,d,nm =
 	t0[p.x-1] and t0[p.x-1][p.z] and 0 or t1[p.x-1] and t1[p.x-1][p.z] and 1 or t2[p.x-1] and t2[p.x-1][p.z] and 2 or 3,
 	t0[p.x] and t0[p.x][p.z-1] and 0 or t1[p.x] and t1[p.x][p.z-1] and 1 or t2[p.x] and t2[p.x][p.z-1] and 2 or 3,
 	t0[p.x+1] and t0[p.x+1][p.z] and 0 or t1[p.x+1] and t1[p.x+1][p.z] and 1 or t2[p.x+1] and t2[p.x+1][p.z] and 2 or 3,
 	t0[p.x] and t0[p.x][p.z+1] and 0 or t1[p.x] and t1[p.x][p.z+1] and 1 or t2[p.x] and t2[p.x][p.z+1] and 2 or 3
-	return z2 > z1 and x1 == x2 and 0
+	d = m>3 and 0
+	or z2 > z1 and x1 == x2 and 0
 	or x2 > x1 and z1 == z2 and 1
 	or z1 > z2 and x1 == x2 and 2
 	or x1 > x2 and z1 == z2 and 3
@@ -158,25 +158,40 @@ local function orient_pile(p) local _,t0 = get_adjacent_nodes(p,{"air"})
 	or x2 > x1 and z2 > z1 and 5
 	or z1 > z2 and x2 > x1 and 6
 	or x1 > x2 and z1 > z2 and 7 or 4
+	nm = m<4 and "erosion:slope_"..k..bstbl[d<4 and 1 or 2][m] or "default:"..k
+	minetest.swap_node(p,{name=nm,param2=d<4 and d or d-4})
+	return a
 end
-local function pile_up(s,m,p)
-	p.y = p.y-1
+local function pile_up(k,m,p) p.y = p.y-1
 	local un,p1,n = minetest.get_node(p),"erosion:slope_"
-	if erosion_materials[string.sub(un.name,9)] then erosionCL(p,un) un = minetest.get_node(p) end
+	if erosion_materials[eroding_lut[un.name]] then erosionCL(p,un) un = minetest.get_node(p) end
 	if un.name == "air" or un.name == "default:water_source" then
-	elseif string.find(un.name,p1) then
-		local p2 = slope_type(un.name)
-		n = orient_pile(p)
-		p1 = slopes[p2] and slopes[p2]+m<4 and p1..s..bstbl[n<4 and 1 or 2][slopes[p2]+m] or "default:"..s
-		minetest.swap_node(p,{name=p1,param2=n<4 and n or n-4})
+	elseif eroded_lut[un.name] then
+		orient_pile(k,m+slopes[eroded_lut[un.name][2]],p)
 		p.y = p.y+1
 		minetest.set_node(p,{name="air"})
 	else p.y = p.y+1
-		n = orient_pile(p)
-		p1 = p1..s..bstbl[n<4 and 1 or 2][m]
-		minetest.swap_node(p,{name=p1,param2=n<4 and n or n-4})
+		a = orient_pile(k,m,p)
+		for i=1,#a do local nn = minetest.get_node(a[i])
+			orient_pile(eroded_lut[nn.name][1],slopes[eroded_lut[nn.name][2]],a[i])
+		end
+--		p1 = p1..k..bstbl[n<4 and 1 or 2][m]
+--		minetest.swap_node(p,{name=p1,param2=n<4 and n or n-4})
 	end
 end
+local function slide_off(p,nd) if eroded_lut[nd.name] then p.y = p.y-1
+	local un = minetest.get_node(p).name
+	if eroded_lut[un] then p.y = p.y+1
+		pile_up(eroded_lut[nd.name][1],slopes[eroded_lut[nd.name][2]],p)
+	elseif string.sub(un,1,17) == "moreblocks:slope_" then
+		local o = get_adjacent_nodes(p,{"air"})
+		if o[1] then p.y = p.y+1
+			local n = slopes[eroded_lut[nd.name][2]]
+			for i=1,#o>n and n or #o do minetest.place_node(o[1],{name="erosion:fall_"..eroding_nodes[eroded_lut[nd.name][1]][2]}) end
+			minetest.set_node(p,{name="air"})
+		end
+	end
+end end
 for k,v in pairs(erosion_materials) do local drt = eroding_nodes[k][2] == "dirt"
 	v.groups.crumbly,v.groups.falling_node,v.groups.not_in_creative_inventory = 3,1,1
 	if not drt or k == "dirt" then
@@ -204,10 +219,17 @@ for k,v in pairs(erosion_materials) do local drt = eroding_nodes[k][2] == "dirt"
 		})
 	end
 end
-
-function erosionCL(p,node) local ntyp = string.sub(node.name,9)
-	if not eroding_nodes[ntyp] then return end
-	local rmnn,flmt = eroding_nodes[ntyp][1].."slope_"..ntyp,"erosion:fall_"..eroding_nodes[ntyp][2]
+stairsplus:register_slope("moreblocks","ice","moreblocks:ice",{
+	description = "Ice",
+	tiles = {"default_ice.png"},
+	is_ground_content = false,
+	paramtype = "light",
+	groups = {cracky = 3, puts_out_fire = 1},
+	sounds = default.node_sound_glass_defaults(),
+})
+function erosionCL(p,node) if not eroding_lut[node.name] then return end
+	local rmnn,flmt = eroding_nodes[eroding_lut[node.name]][1].."slope_"..eroding_lut[node.name],
+		"erosion:fall_"..eroding_nodes[eroding_lut[node.name]][2]
 	local xpsr,nvtbl = get_adjacent_nodes(p,{"air"})
 	if xpsr[1] then
 		local xr,zr = 0,0
@@ -230,73 +252,99 @@ function erosionCL(p,node) local ntyp = string.sub(node.name,9)
 	end
 end
 
-minetest.register_on_generated(function(minp, maxp)--function that affects generated mapblockchunks
+local dpstn,cube3,box = {},{},{}
+for x=-1,1 do cube3[x]={} for y=-1,1 do cube3[x][y]={} end end
+for k,v in pairs(eroding_nodes) do dpstn[k] = minetest.get_content_id("default:"..k)
+	for s,_ in pairs(slopes) do dpstn["slp_"..k..s] = minetest.get_content_id(eroding_nodes[k][1].."slope_"..k..s) end
+end
+dpstn.air = minetest.get_content_id("air")
+local function place_slope(data,prm2,vpos,m)
+	box.w = data[vpos+cube3[-1][0][0]] == dpstn[m]
+	box.e = data[vpos+cube3[1][0][0]] == dpstn[m]
+	box.d = data[vpos+cube3[0][-1][0]] == dpstn[m]
+	box.u = data[vpos+cube3[0][1][0]] == dpstn[m]
+	box.s = data[vpos+cube3[0][0][-1]] == dpstn[m]
+	box.n = data[vpos+cube3[0][0][1]] == dpstn[m]
+	if box.w or	box.e or box.d or box.u or box.s or box.n then
+		box.t = (box.w and 1 or 0)+(box.e and 1 or 0)+(box.d and 1 or 0)+(box.u and 1 or 0)+(box.s and 1 or 0)+(box.n and 1 or 0)
+		if box.t == 2 then
+			box.f = box.d and box.n and 10
+			or box.d and box.e and 1
+			or box.d and box.s and 2
+			or box.d and box.w and 13
+			or box.u and box.n and 20
+			or box.u and box.w and 21
+			or box.u and box.s and 6
+			or box.u and box.e and 17
+			or box.e and box.s and 18
+			or box.w and box.s and 7
+			or box.e and box.n and 9
+			or box.w and box.n and 12
+			if box.f then data[vpos],prm2[vpos] = dpstn["slp_"..m],box.f
+				if not box.e and data[vpos+cube3[-1][0][0]] == dpstn.air
+				and data[vpos+cube3[-1][box.u and 1 or box.d and -1 or 0][box.n and 1 or box.s and -1 or 0]] == dpstn[m]
+				and math.mod(vpos,cube3[0][0][1])~=1 then
+					data[vpos+cube3[-1][0][0]],prm2[vpos+cube3[-1][0][0]] = dpstn["slp_"..m.."_outer_cut"],box.f
+				end
+				if not box.u and data[vpos+cube3[0][-1][0]] == dpstn.air
+				and data[vpos+cube3[box.e and 1 or box.w and -1 or 0][-1][box.n and 1 or box.s and -1 or 0]] == dpstn[m]
+				and vpos>cube3[0][1][0] then
+					data[vpos+cube3[0][-1][0]],prm2[vpos+cube3[0][-1][0]] = dpstn["slp_"..m.."_outer_cut"],box.f
+				end
+				if not box.n and data[vpos+cube3[0][0][-1]] == dpstn.air
+				and data[vpos+cube3[box.e and 1 or box.w and -1 or 0][box.u and 1 or box.d and -1 or 0][-1]] == dpstn[m]
+				and math.mod(vpos,cube3[0][1][0])~=cube3[0][0][1] then
+					data[vpos+cube3[0][0][-1]],prm2[vpos+cube3[0][0][-1]] = dpstn["slp_"..m.."_outer_cut"],box.f
+				end
+			end
+		elseif box.t == 3 then
+			box.f = box.d and box.n and box.w and 0
+			or box.d and box.e and box.n and 1
+			or box.d and box.s and box.e and 2
+			or box.d and box.w and box.s and 3
+			or box.u and box.n and box.e and 20
+			or box.u and box.w and box.n and 21
+			or box.u and box.s and box.w and 22
+			or box.u and box.e and box.s and 23
+			if box.f then data[vpos],prm2[vpos] = dpstn["slp_"..m.."_inner_cut"],box.f
+				if box.e and data[vpos+cube3[-1][0][0]] == dpstn.air
+				and data[vpos+cube3[-1][box.u and 1 or box.d and -1 or 0][box.n and 1 or box.s and -1 or 0]] == dpstn[m]
+				and math.mod(vpos,cube3[0][0][1])~=1 then
+					data[vpos+cube3[-1][0][0]],prm2[vpos+cube3[-1][0][0]] = dpstn["slp_"..m.."_outer_cut"],box.f
+				end
+				if box.u and data[vpos+cube3[0][-1][0]] == dpstn.air and vpos>cube3[0][1][0] then
+					data[vpos+cube3[0][-1][0]],prm2[vpos+cube3[0][-1][0]] = dpstn["slp_"..m.."_outer_cut"],box.f
+				end
+				if box.n and data[vpos+cube3[0][0][-1]] == dpstn.air
+				and data[vpos+cube3[box.e and 1 or box.w and -1 or 0][box.u and 1 or box.d and -1 or 0][-1]] == dpstn[m]
+				and math.mod(vpos,cube3[0][1][0])~=cube3[0][0][1] then
+					data[vpos+cube3[0][0][-1]],prm2[vpos+cube3[0][0][-1]] = dpstn["slp_"..m.."_outer_cut"],box.f
+				end
+			end
+		end
+	end
+end
+minetest.register_on_generated(function(minp, maxp)
 	if minp.y > 256 then return end
 	local vm, emin, emax = minetest.get_mapgen_object("voxelmanip")
 	local data,prm2 = vm:get_data(),vm:get_param2_data()
 	local vxa = VoxelArea:new{MinEdge=emin, MaxEdge=emax}
-	local dpstn,cube3,box,vpos = {},{},{}
-	for x=-1,1 do cube3[x]={} for y=-1,1 do cube3[x][y]={}
-		for z=-1,1 do cube3[x][y][z]=x+y*vxa.ystride+z*vxa.zstride end
-	end end
-	for k,v in pairs(erosion_materials) do dpstn[k] = minetest.get_content_id("default:"..k)
-		for s,_ in pairs(slopes) do dpstn["slp_"..k..s] = minetest.get_content_id("erosion:slope_"..k..s) end
+	for x=-1,1 do for y=-1,1 do	for z=-1,1 do cube3[x][y][z]=x+y*vxa.ystride+z*vxa.zstride end end end
+	for vpos=vxa:index(minp.x,minp.y,minp.z),vxa:index(maxp.x,maxp.y,maxp.z) do
+		 if data[vpos] == dpstn.air then for i=1,#gen_nodes do place_slope(data,prm2,vpos,gen_nodes[i]) end end
 	end
-	for s,_ in pairs(slopes) do dpstn["slp_stone"..s] = minetest.get_content_id("moreblocks:slope_stone"..s) end
-	dpstn.stone,dpstn.air = minetest.get_content_id("default:stone"),minetest.get_content_id("air")
-	local function place_slope(vpos,m) if data[vpos] == dpstn.air then
-		box.w = data[vpos+cube3[-1][0][0]] == dpstn[m]
-		box.e = data[vpos+cube3[1][0][0]] == dpstn[m]
-		box.d = data[vpos+cube3[0][-1][0]] == dpstn[m]
-		box.u = data[vpos+cube3[0][1][0]] == dpstn[m]
-		box.s = data[vpos+cube3[0][0][-1]] == dpstn[m]
-		box.n = data[vpos+cube3[0][0][1]] == dpstn[m]
-		if box.w or	box.e or box.d or box.u or box.s or box.n then
-			box.t = (box.w and 1 or 0)+(box.e and 1 or 0)+(box.d and 1 or 0)+(box.u and 1 or 0)+(box.s and 1 or 0)+(box.n and 1 or 0)
-			if box.t == 2 then
-				box.f = box.d and box.n and 0
-				or box.d and box.e and 1
-				or box.d and box.s and 2
-				or box.d and box.w and 3
-				or box.u and box.n and 20
-				or box.u and box.w and 21
-				or box.u and box.s and 22
-				or box.u and box.e and 23
-				or box.w and box.s and 7
-				or box.e and box.n and 9
-				or box.w and box.n and 12
-				or box.e and box.s and 18
-				if box.f then data[vpos],prm2[vpos] = dpstn["slp_"..m],box.f end
-			elseif box.t == 3 then
-				box.f = box.d and box.n and box.w and 0
-				or box.d and box.e and box.n and 1
-				or box.d and box.s and box.e and 2
-				or box.d and box.w and box.s and 3
-				or box.u and box.n and box.e and 20
-				or box.u and box.w and box.n and 21
-				or box.u and box.s and box.w and 22
-				or box.u and box.e and box.s and 23
-				if box.f then data[vpos],prm2[vpos] = dpstn["slp_"..m.."_inner_cut"],box.f
-					if box.u and data[vpos+cube3[0][-1][0]] == dpstn.air then
-						data[vpos+cube3[0][-1][0]],prm2[vpos+cube3[0][-1][0]] = dpstn["slp_"..m.."_outer_cut"],box.f
-					end
-				end
-			end
-		end
-	end end
-	for vpos=vxa:index(minp.x,minp.y,minp.z),vxa:index(maxp.x,maxp.y,maxp.z) do place_slope(vpos,"stone") end
-	if maxp.y > 1 then
-		local heightmap,hndx = minetest.get_mapgen_object("heightmap"),1
+	if maxp.y > 2 then
+		local heightmap,hndx,vpos = minetest.get_mapgen_object("heightmap"),1
 		for z=minp.z,maxp.z do for x=minp.x,maxp.x do
 			vpos = vxa:index(x,heightmap[hndx]+1,z)
-			for k,_ in pairs(erosion_materials) do place_slope(vpos,k) end
+			if data[vpos] == dpstn.air then for k,_ in pairs(eroding_nodes) do place_slope(data,prm2,vpos,k) end end
 			hndx = hndx+1
 		end end
 	end
-	vm:set_data(data)--set altered data to the vm
-	vm:set_param2_data(prm2)--set altered param2 data
-	vm:calc_lighting()--recalculate lighting
-	vm:write_to_map(data) --save altered data in vm
+	vm:set_data(data)
+	vm:set_param2_data(prm2)
+	vm:calc_lighting()
+	vm:write_to_map(data)
 end)
 
 local function wwthrngCL(p,n) p.y = p.y+1
@@ -306,21 +354,43 @@ local function wwthrngCL(p,n) p.y = p.y+1
 		erosionCL(p,n)
 	end
 end
-
+--[[
+minetest.register_lbm({
+	name = "erosion:initial_load_pass",
+	nodenames = nntbl,
+	action = wwthrngCL,
+})
+--]]
 minetest.register_abm({
 	nodenames = nntbl,
 	neighbors = {"air"},
-	interval = 9,
-	chance = 37,
+	interval = 37,
+	chance = 9,
 	action = wwthrngCL,
 })
 
 minetest.register_abm({
 	nodenames = lntbl,
 	neighbors = {"air"},
-	interval = 7,
-	chance = 13,
+	interval = 17,
+	chance = 7,
 	action = wwthrngCL,
+})
+--[[
+minetest.register_abm({--causes dirt/sand/gravel to erode even when covered, may result in excessive erosion
+	nodenames = lntbl,
+	neighbors = {"air"},
+	interval = 43,
+	chance = 9,
+	action = erosionCL,
+})
+--]]
+minetest.register_abm({
+	nodenames = sntbl,
+	neighbors = {"air"},
+	interval = 7,
+	chance = 3,
+	action = slide_off,
 })
 
 minetest.register_on_punchnode(wwthrngCL)
