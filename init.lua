@@ -324,15 +324,19 @@ local function place_slope(data,prm2,vpos,m)
 		end
 	end
 end
-minetest.register_on_generated(function(minp, maxp)
-	if minp.y > 256 then return end
-	local vm, emin, emax = minetest.get_mapgen_object("voxelmanip")
-	local data,prm2 = vm:get_data(),vm:get_param2_data()
-	local vxa = VoxelArea:new{MinEdge=emin, MaxEdge=emax}
+local function erosion_slope_gen(minp,maxp,vm,emin,emax)
+	local vxa = VoxelArea:new{MinEdge=emin,MaxEdge=emax}
+	local data,prm2,vpos = vm:get_data(),vm:get_param2_data()
 	for x=-1,1 do for y=-1,1 do	for z=-1,1 do cube3[x][y][z]=x+y*vxa.ystride+z*vxa.zstride end end end
 	for vpos=vxa:index(minp.x,minp.y,minp.z),vxa:index(maxp.x,maxp.y,maxp.z) do
 		 if data[vpos] == dpstn.air then for i=1,#gen_nodes do place_slope(data,prm2,vpos,gen_nodes[i]) end end
 	end
+	return data,prm2,vxa
+end
+minetest.register_on_generated(function(minp,maxp)
+	if minp.y > 256 then return end
+	local vm,emin,emax = minetest.get_mapgen_object("voxelmanip")
+	local data,prm2,vxa = erosion_slope_gen(minp,maxp,vm,emin,emax)
 	if maxp.y > 2 then
 		local heightmap,hndx,vpos = minetest.get_mapgen_object("heightmap"),1
 		for z=minp.z,maxp.z do for x=minp.x,maxp.x do
@@ -346,7 +350,27 @@ minetest.register_on_generated(function(minp, maxp)
 	vm:calc_lighting()
 	vm:write_to_map(data)
 end)
-
+minetest.register_chatcommand("erosion_slope_gen",{
+	description = "Generate erosion slopes in player's current mapchunk",
+	privs = {noclip=true,server=true,rollback=true},
+	func = function(nm)
+		local plyr,p1,p2 = minetest.get_player_by_name(nm)
+		if not plyr then return false,"Player not found!" end
+		print ("Generating erosion slopes in mapchunk")
+		p1 = plyr:getpos()
+		p1.x,p1.y,p1.z = 80*math.floor((p1.x+32)/80)-32,80*math.floor((p1.y+32)/80)-32,80*math.floor((p1.z+32)/80)-32
+		p2 = {x=p1.x+79,y=p1.y+79,z=p1.z+79}
+		local vm = minetest.get_voxel_manip()
+		local emin,emax = vm:read_from_map(p1,p2)
+		local data,prm2 = erosion_slope_gen(p1,p2,vm,emin,emax)
+		vm:set_data(data)
+		vm:set_param2_data(prm2)
+		vm:calc_lighting()
+		vm:write_to_map(data)
+		vm:update_map()
+		return true,"Done."
+	end
+})
 local function wwthrngCL(p,n) p.y = p.y+1
 	local k = minetest.get_node(p).name
 	if k == "air" then
