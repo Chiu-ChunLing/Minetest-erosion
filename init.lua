@@ -326,7 +326,7 @@ local function place_slope(data,prm2,vpos,m)
 end
 local function erosion_slope_gen(minp,maxp,vm,emin,emax)
 	local vxa = VoxelArea:new{MinEdge=emin,MaxEdge=emax}
-	local data,prm2,vpos = vm:get_data(),vm:get_param2_data()
+	local data,prm2 = vm:get_data(),vm:get_param2_data()
 	for x=-1,1 do for y=-1,1 do	for z=-1,1 do cube3[x][y][z]=x+y*vxa.ystride+z*vxa.zstride end end end
 	for vpos=vxa:index(minp.x,minp.y,minp.z),vxa:index(maxp.x,maxp.y,maxp.z) do
 		 if data[vpos] == dpstn.air then for i=1,#gen_nodes do place_slope(data,prm2,vpos,gen_nodes[i]) end end
