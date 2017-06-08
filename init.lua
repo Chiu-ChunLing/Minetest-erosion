@@ -246,9 +246,9 @@ function erosionCL(p,node) if not eroding_lut[node.name] then return end
 		if xr+zr < 1 then xr,zr = p.x-xpsr[1].x,p.z-xpsr[1].z+15
 			minetest.place_node(xpsr[1],{name=flmt})
 		end
-		if xr+zr < 7 then minetest.swap_node(p,{name=rmnn.."_half_raised",param2=math.mod(xr+zr-1,4)})
-		elseif xr+zr < 13 then minetest.swap_node(p,{name=rmnn.."_cut",param2=math.mod(xr>4 and zr/2-2 or 5-zr/2,4)})
-		else minetest.swap_node(p,{name=rmnn.."_inner_cut_half_raised",param2=math.mod(xr>0 and 9-zr/2 or zr/2,4)}) end
+		if xr+zr < 7 then minetest.swap_node(p,{name=rmnn.."_half_raised",param2=xr+zr-1%4})
+		elseif xr+zr < 13 then minetest.swap_node(p,{name=rmnn.."_cut",param2=xr>4 and zr/2-2 or 5-zr/2%4})
+		else minetest.swap_node(p,{name=rmnn.."_inner_cut_half_raised",param2=xr>0 and 9-zr/2 or zr/2%4}) end
 	end
 end
 
@@ -283,7 +283,7 @@ local function place_slope(data,prm2,vpos,m)
 			if box.f then data[vpos],prm2[vpos] = dpstn["slp_"..m],box.f
 				if not box.e and data[vpos+cube3[-1][0][0]] == dpstn.air
 				and data[vpos+cube3[-1][box.u and 1 or box.d and -1 or 0][box.n and 1 or box.s and -1 or 0]] == dpstn[m]
-				and math.mod(vpos,cube3[0][0][1])~=1 then
+				and vpos%cube3[0][0][1]~=1 then
 					data[vpos+cube3[-1][0][0]],prm2[vpos+cube3[-1][0][0]] = dpstn["slp_"..m.."_outer_cut"],box.f
 				end
 				if not box.u and data[vpos+cube3[0][-1][0]] == dpstn.air
@@ -293,7 +293,7 @@ local function place_slope(data,prm2,vpos,m)
 				end
 				if not box.n and data[vpos+cube3[0][0][-1]] == dpstn.air
 				and data[vpos+cube3[box.e and 1 or box.w and -1 or 0][box.u and 1 or box.d and -1 or 0][-1]] == dpstn[m]
-				and math.mod(vpos,cube3[0][1][0])~=cube3[0][0][1] then
+				and vpos%cube3[0][1][0]~=cube3[0][0][1] then
 					data[vpos+cube3[0][0][-1]],prm2[vpos+cube3[0][0][-1]] = dpstn["slp_"..m.."_outer_cut"],box.f
 				end
 			end
@@ -309,7 +309,7 @@ local function place_slope(data,prm2,vpos,m)
 			if box.f then data[vpos],prm2[vpos] = dpstn["slp_"..m.."_inner_cut"],box.f
 				if box.e and data[vpos+cube3[-1][0][0]] == dpstn.air
 				and data[vpos+cube3[-1][box.u and 1 or box.d and -1 or 0][box.n and 1 or box.s and -1 or 0]] == dpstn[m]
-				and math.mod(vpos,cube3[0][0][1])~=1 then
+				and vpos%cube3[0][0][1]~=1 then
 					data[vpos+cube3[-1][0][0]],prm2[vpos+cube3[-1][0][0]] = dpstn["slp_"..m.."_outer_cut"],box.f
 				end
 				if box.u and data[vpos+cube3[0][-1][0]] == dpstn.air and vpos>cube3[0][1][0] then
@@ -317,22 +317,26 @@ local function place_slope(data,prm2,vpos,m)
 				end
 				if box.n and data[vpos+cube3[0][0][-1]] == dpstn.air
 				and data[vpos+cube3[box.e and 1 or box.w and -1 or 0][box.u and 1 or box.d and -1 or 0][-1]] == dpstn[m]
-				and math.mod(vpos,cube3[0][1][0])~=cube3[0][0][1] then
+				and vpos%cube3[0][1][0]~=cube3[0][0][1] then
 					data[vpos+cube3[0][0][-1]],prm2[vpos+cube3[0][0][-1]] = dpstn["slp_"..m.."_outer_cut"],box.f
 				end
 			end
 		end
 	end
 end
-minetest.register_on_generated(function(minp, maxp)
-	if minp.y > 256 then return end
-	local vm, emin, emax = minetest.get_mapgen_object("voxelmanip")
+local function erosion_slope_gen(minp,maxp,vm,emin,emax)
+	local vxa = VoxelArea:new{MinEdge=emin,MaxEdge=emax}
 	local data,prm2 = vm:get_data(),vm:get_param2_data()
-	local vxa = VoxelArea:new{MinEdge=emin, MaxEdge=emax}
 	for x=-1,1 do for y=-1,1 do	for z=-1,1 do cube3[x][y][z]=x+y*vxa.ystride+z*vxa.zstride end end end
 	for vpos=vxa:index(minp.x,minp.y,minp.z),vxa:index(maxp.x,maxp.y,maxp.z) do
 		 if data[vpos] == dpstn.air then for i=1,#gen_nodes do place_slope(data,prm2,vpos,gen_nodes[i]) end end
 	end
+	return data,prm2,vxa
+end
+minetest.register_on_generated(function(minp,maxp)
+	if minp.y > 256 then return end
+	local vm,emin,emax = minetest.get_mapgen_object("voxelmanip")
+	local data,prm2,vxa = erosion_slope_gen(minp,maxp,vm,emin,emax)
 	if maxp.y > 2 then
 		local heightmap,hndx,vpos = minetest.get_mapgen_object("heightmap"),1
 		for z=minp.z,maxp.z do for x=minp.x,maxp.x do
@@ -346,7 +350,27 @@ minetest.register_on_generated(function(minp, maxp)
 	vm:calc_lighting()
 	vm:write_to_map(data)
 end)
-
+minetest.register_chatcommand("erosion_slope_gen",{
+	description = "Generate erosion slopes in player's current mapchunk",
+	privs = {noclip=true,server=true,rollback=true},
+	func = function(nm)
+		local plyr,p1,p2 = minetest.get_player_by_name(nm)
+		if not plyr then return false,"Player not found!" end
+		print ("Generating erosion slopes in mapchunk")
+		p1 = plyr:getpos()
+		p1.x,p1.y,p1.z = 80*math.floor((p1.x+32)/80)-32,80*math.floor((p1.y+32)/80)-32,80*math.floor((p1.z+32)/80)-32
+		p2 = {x=p1.x+79,y=p1.y+79,z=p1.z+79}
+		local vm = minetest.get_voxel_manip()
+		local emin,emax = vm:read_from_map(p1,p2)
+		local data,prm2 = erosion_slope_gen(p1,p2,vm,emin,emax)
+		vm:set_data(data)
+		vm:set_param2_data(prm2)
+		vm:calc_lighting()
+		vm:write_to_map(data)
+		vm:update_map()
+		return true,"Done."
+	end
+})
 local function wwthrngCL(p,n) p.y = p.y+1
 	local k = minetest.get_node(p).name
 	if k == "air" then
