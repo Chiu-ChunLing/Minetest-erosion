@@ -246,9 +246,9 @@ function erosionCL(p,node) if not eroding_lut[node.name] then return end
 		if xr+zr < 1 then xr,zr = p.x-xpsr[1].x,p.z-xpsr[1].z+15
 			minetest.place_node(xpsr[1],{name=flmt})
 		end
-		if xr+zr < 7 then minetest.swap_node(p,{name=rmnn.."_half_raised",param2=xr+zr-1%4})
-		elseif xr+zr < 13 then minetest.swap_node(p,{name=rmnn.."_cut",param2=xr>4 and zr/2-2 or 5-zr/2%4})
-		else minetest.swap_node(p,{name=rmnn.."_inner_cut_half_raised",param2=xr>0 and 9-zr/2 or zr/2%4}) end
+		if xr+zr < 7 then minetest.swap_node(p,{name=rmnn.."_half_raised",param2=(xr+zr-1)%4})
+		elseif xr+zr < 13 then minetest.swap_node(p,{name=rmnn.."_cut",param2=xr>4 and zr/2-2 or (5-zr/2)%4})
+		else minetest.swap_node(p,{name=rmnn.."_inner_cut_half_raised",param2=xr>0 and 9-zr/2 or (zr/2)%4}) end
 	end
 end
 
