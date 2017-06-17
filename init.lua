@@ -163,7 +163,7 @@ local function orient_pile(k,m,p) local _,t0 = get_adjacent_nodes(p,{"air"})
 	return a
 end
 local function pile_up(k,m,p) p.y = p.y-1
-	local un,p1,n = minetest.get_node(p),"erosion:slope_"
+	local un,p1,a = minetest.get_node(p),"erosion:slope_"
 	if erosion_materials[eroding_lut[un.name]] then erosionCL(p,un) un = minetest.get_node(p) end
 	if un.name == "air" or un.name == "default:water_source" then
 	elseif eroded_lut[un.name] then
@@ -175,8 +175,6 @@ local function pile_up(k,m,p) p.y = p.y-1
 		for i=1,#a do local nn = minetest.get_node(a[i])
 			orient_pile(eroded_lut[nn.name][1],slopes[eroded_lut[nn.name][2]],a[i])
 		end
---		p1 = p1..k..bstbl[n<4 and 1 or 2][m]
---		minetest.swap_node(p,{name=p1,param2=n<4 and n or n-4})
 	end
 end
 local function slide_off(p,nd) if eroded_lut[nd.name] then p.y = p.y-1
