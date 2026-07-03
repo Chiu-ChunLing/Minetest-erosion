@@ -5,12 +5,12 @@ if not rawget(_G,"stairsplus") then
 	return
 end
 local nntbl,eroding_lut,eroded_lut,eroding_nodes = {},{},{},{--mod defining sloped nodes, materials produced by erosion
-	stone = {"moreblocks:","gravel"},
-	cobble = {"moreblocks:","gravel"},
-	mossycobble = {"moreblocks:","gravel"},
-	desert_stone = {"moreblocks:","desert_sand"},
-	desert_cobble = {"moreblocks:","desert_sand"},
-	sandstone = {"moreblocks:","sand"},
+	stone = {"default:","gravel"},
+	cobble = {"default:","gravel"},
+	mossycobble = {"default:","gravel"},
+	desert_stone = {"default:","desert_sand"},
+	desert_cobble = {"default:","desert_sand"},
+	sandstone = {"default:","sand"},
 	dirt = {"erosion:","dirt"},
 	dirt_with_grass = {"erosion:","dirt"},
 	dirt_with_dry_grass = {"erosion:","dirt"},
@@ -20,7 +20,7 @@ local nntbl,eroding_lut,eroded_lut,eroding_nodes = {},{},{},{--mod defining slop
 	gravel = {"erosion:","gravel"},
 	clay = {"erosion:","clay"},
 	snowblock = {"erosion:","snowblock"},
-	ice = {"moreblocks:","snowblock"},
+	ice = {"default:","snowblock"},
 }
 local gen_nodes = {"stone","desert_stone","sandstone","ice"}
 local lntbl,erosion_materials = {},{--erosion products to define
@@ -91,8 +91,8 @@ local lntbl,erosion_materials = {},{--erosion products to define
 			dug = {name = "default_snow_footstep", gain = 0.2},
 			dig = {name = "default_snow_footstep", gain = 0.2}
 		}),
-	},
---[[	ice = {
+	},--[[
+	ice = {
 		description = "Ice",
 		tiles = {"default_ice.png"},
 		is_ground_content = false,
@@ -164,7 +164,7 @@ end
 local function pile_up(k,m,p) p.y = p.y-1
 	local un,p1,a = minetest.get_node(p),"erosion:slope_"
 	if erosion_materials[eroding_lut[un.name]] then erosionCL(p,un) un = minetest.get_node(p) end
-	if un.name == "air" or un.name == "default:water_source" then
+	if un.name == "air" then
 	elseif eroded_lut[un.name] then
 		orient_pile(k,m+slopes[eroded_lut[un.name][2]],p)
 		p.y = p.y+1
@@ -180,7 +180,7 @@ local function slide_off(p,nd) if eroded_lut[nd.name] then p.y = p.y-1
 	local un = minetest.get_node(p).name
 	if eroded_lut[un] then p.y = p.y+1
 		pile_up(eroded_lut[nd.name][1],slopes[eroded_lut[nd.name][2]],p)
-	elseif string.sub(un,1,17) == "moreblocks:slope_" then
+	elseif string.sub(un,1,17) == "erosion:slope_" then
 		local o = get_adjacent_nodes(p,{"air"})
 		if o[1] then p.y = p.y+1
 			local n = slopes[eroded_lut[nd.name][2]]
@@ -205,6 +205,12 @@ for k,v in pairs(erosion_materials) do local drt = eroding_nodes[k][2] == "dirt"
 			recipe = {"erosion:fall_"..k,"erosion:fall_"..k,"erosion:fall_"..k,"erosion:fall_"..k,},
 		})
 	end
+	minetest.register_node("erosion:"..k, {
+		description = v.description,
+		tiles = v.tiles,
+		groups = v.groups,
+		sounds = v.sounds,
+	})
 	stairsplus:register_slope("erosion",k,"erosion:"..k,v)
 	if drt then minetest.override_item("default:"..k,{groups = {crumbly=3,falling_node=1,soil=1}}) end
 	for s,d in pairs(slopes) do sntbl[#sntbl+1] = "erosion:slope_"..k..s
@@ -216,14 +222,14 @@ for k,v in pairs(erosion_materials) do local drt = eroding_nodes[k][2] == "dirt"
 		})
 	end
 end
-stairsplus:register_slope("moreblocks","ice","moreblocks:ice",{
+--[[stairsplus:register_slope("moreblocks","ice","moreblocks:ice",{
 	description = "Ice",
 	tiles = {"default_ice.png"},
 	is_ground_content = false,
 	paramtype = "light",
 	groups = {cracky = 3, puts_out_fire = 1},
 	sounds = default.node_sound_glass_defaults(),
-})
+})--]]
 function erosionCL(p,node) if not eroding_lut[node.name] then return end
 	local rmnn,flmt = eroding_nodes[eroding_lut[node.name]][1].."slope_"..eroding_lut[node.name],
 		"erosion:fall_"..eroding_nodes[eroding_lut[node.name]][2]
@@ -375,13 +381,7 @@ local function wwthrngCL(p,n) p.y = p.y+1
 		erosionCL(p,n)
 	end
 end
---[[
-minetest.register_lbm({
-	name = "erosion:initial_load_pass",
-	nodenames = nntbl,
-	action = wwthrngCL,
-})
---]]
+
 minetest.register_abm({
 	nodenames = nntbl,
 	neighbors = {"air"},
@@ -397,15 +397,7 @@ minetest.register_abm({
 	chance = 7,
 	action = wwthrngCL,
 })
---[[
-minetest.register_abm({--causes dirt/sand/gravel to erode even when covered, may result in excessive erosion
-	nodenames = lntbl,
-	neighbors = {"air"},
-	interval = 43,
-	chance = 9,
-	action = erosionCL,
-})
---]]
+
 minetest.register_abm({
 	nodenames = sntbl,
 	neighbors = {"air"},
